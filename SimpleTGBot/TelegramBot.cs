@@ -143,6 +143,58 @@ public class TelegramBot
             replyMarkup: keyboard,
             cancellationToken: cancellationToken);
     }
+    
+    /// <summary>
+    /// Отправляет рецепт с нужным id
+    /// </summary>
+    async Task SendRecipeById(CallbackQuery callbackQuery, ITelegramBotClient botClient,
+        CancellationToken cancellationToken, int id)
+    {
+        Meal meal = await MealDBApi.GetRecipeByID(id);
+        await SendRecipe(meal, callbackQuery, botClient, cancellationToken);
+    }
+    
+    /// <summary>
+    /// Отправляет случайный рецепт
+    /// </summary>
+    async Task SendRandomRecipe(CallbackQuery callbackQuery, ITelegramBotClient botClient, CancellationToken cancellationToken)
+    {
+        Meal meal = await MealDBApi.GetRandomRecipe();
+        await SendRecipe(meal, callbackQuery, botClient, cancellationToken);
+    }
+
+    /// <summary>
+    /// Отправляет инструкцию к рецепту и ингредиенты
+    /// </summary>
+    async Task SendRecipe(Meal meal, CallbackQuery callbackQuery, ITelegramBotClient botClient,
+        CancellationToken cancellationToken)
+    {
+        string name = await Translator.Translate(meal.strMeal, "en", "ru");
+        string instruction = await Translator.Translate(meal.strInstructions, "en", "ru");;
+
+        await botClient.SendTextMessageAsync(
+            chatId: callbackQuery.Message.Chat.Id,
+            text: $"<b>{name}</b>\n\n" + instruction,
+            parseMode: ParseMode.Html,
+            cancellationToken: cancellationToken);
+
+        string ingredients = "";
+        for (var i = 0; i < 10; i++)
+        {
+            var ingredient = meal.GetIngredients().ToList()[i] + " " + meal.GetMeasures().ToList()[i];
+            
+            if (string.IsNullOrWhiteSpace(ingredient)) break;
+            var ingr = await Translator.Translate(ingredient, "en", "ru");
+
+            ingredients += ingr + "\n";
+        }
+        
+        await botClient.SendTextMessageAsync(
+            chatId: callbackQuery.Message.Chat.Id,
+            text: $"<b>Ингредиенты</b>\n\n" + ingredients,
+            parseMode: ParseMode.Html,
+            cancellationToken: cancellationToken);
+    }
 
     /// <summary>
     /// Обработчик исключений, возникших при работе бота
