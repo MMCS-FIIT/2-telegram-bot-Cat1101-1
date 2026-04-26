@@ -86,6 +86,20 @@ public class TelegramBot
         
         var chatId = message.Chat.Id;
         var userId = message.From?.Id ?? chatId;
+        
+        if (_userStates.ContainsKey(userId))
+        {
+            if (_userStates[userId] == InputStates.WaitForWord)
+            {
+                await SendRecipesByWords(message, botClient, cancellationToken);
+            }
+
+            if (_userStates[userId] == InputStates.WaitForIngredient)
+            {
+                await SendRecipesByIngredient(message, botClient, cancellationToken);
+            }
+        }
+
 
         if (messageText == "/start" || messageText == "/menu")
         {
@@ -133,6 +147,25 @@ public class TelegramBot
                     await SendCategories(callback, botClient, cancellationToken);
                     return;
             }
+            
+            string[] query = callbackData.Split("_");
+            if (query[0] == "ingr" && int.TryParse(query[1], out var result))
+            {
+                await SendRecipesByIngredient(callback.Message, botClient, cancellationToken, result);
+                return;
+            }
+                
+            if (query[0] == "word" && int.TryParse(query[1], out result))
+            {
+                await SendRecipesByWords(callback.Message, botClient, cancellationToken, result);
+                return;
+            }
+                
+            if (query[0] == "cat" && int.TryParse(query[2], out result))
+            {
+                await SendRecipesByCategory(callback.Message, botClient, cancellationToken, result, query[1]);
+                return;
+            }
 
             if (int.TryParse(callbackData, out var id))
             {
@@ -169,6 +202,194 @@ public class TelegramBot
                   + "\n\nВыберите пункт меню:",
             replyMarkup: keyboard,
             cancellationToken: cancellationToken);
+    }
+    
+    /// <summary>
+    /// Отправляет список рецептов с заданным словом
+    /// В виде интерактивной InlineKeyboard
+    /// </summary>
+    /// <param name="offset">Сколько рецептов пропустить</param>
+    async Task SendRecipesByWords(Message message, ITelegramBotClient botClient,
+        CancellationToken cancellationToken, int offset=0)
+    {
+        if (message.Text is null || message.From is null) return;
+        
+        _userStates[message.From.Id] = InputStates.Idle;
+        
+        var buttons = new List<InlineKeyboardButton[]>();
+
+        try
+        {
+            var word = await Translator.Translate(message.Text ?? "chicken");
+
+            var meals = await MealDBApi.GetRecipesByFirstWord(word.Replace("\n", ""), offset);
+
+            foreach (var meal in meals)
+            {
+                string name = await Translator.Translate(meal.strMeal, "en", "ru");
+                int id = meal.idMeal;
+            
+                buttons.Add(new []{InlineKeyboardButton.WithCallbackData(name, id.ToString())});
+            }
+        
+            buttons.Add(new []
+            {
+                InlineKeyboardButton.WithCallbackData("<--", "word_"+Math.Max(offset-5, 0)),
+                InlineKeyboardButton.WithCallbackData("-->", "word_"+Math.Max(offset+5, 0))
+            });
+
+            if (message.ReplyMarkup is null)
+            {
+                await botClient.SendTextMessageAsync(
+                    chatId: message.Chat.Id,
+                    text: "Рецепты:",
+                    cancellationToken: cancellationToken);
+        
+                await botClient.SendTextMessageAsync(
+                    chatId: message.Chat.Id,
+                    text: message.Text,
+                    replyMarkup: new InlineKeyboardMarkup(buttons),
+                    cancellationToken: cancellationToken);
+            }
+            else
+            {
+                await botClient.EditMessageReplyMarkupAsync(message.Chat.Id,
+                    message.MessageId,
+                    replyMarkup: new InlineKeyboardMarkup(buttons),
+                    cancellationToken: cancellationToken);
+            }
+        }
+        catch (Exception e)
+        {
+            await botClient.SendTextMessageAsync(
+                chatId: message.Chat.Id,
+                text: "Рецепт не найден",
+                cancellationToken: cancellationToken);
+        }
+    }
+    
+    /// <summary>
+    /// Отправляет список рецептов с заданным ингредиентом
+    /// В виде интерактивной InlineKeyboard
+    /// </summary>
+    /// <param name="offset">Сколько рецептов пропустить</param>
+    async Task SendRecipesByIngredient(Message message, ITelegramBotClient botClient,
+        CancellationToken cancellationToken, int offset=0)
+    {
+        if (message.Text is null || message.From is null) return;
+        
+        _userStates[message.From.Id] = InputStates.Idle;
+        
+        var buttons = new List<InlineKeyboardButton[]>();
+
+        try
+        {
+            var word = await Translator.Translate(message.Text ?? "chicken");
+            word = word.Replace("\n", "").Replace(" ", "_").Trim().ToLower();
+            if (word == "potato") word = "potatoes";
+
+            var meals = await MealDBApi.GetRecipesByIngredient(word, offset);
+
+            foreach (var meal in meals)
+            {
+                string name = await Translator.Translate(meal.strMeal, "en", "ru");
+                int id = meal.idMeal;
+            
+                buttons.Add(new []{InlineKeyboardButton.WithCallbackData(name, id.ToString())});
+            }
+            
+            buttons.Add(new []
+            {
+                InlineKeyboardButton.WithCallbackData("<--", "ingr_"+Math.Max(offset-5, 0)),
+                InlineKeyboardButton.WithCallbackData("-->", "ingr_"+Math.Max(offset+5, 0))
+            });
+
+            if (message.ReplyMarkup is null)
+            {
+                await botClient.SendTextMessageAsync(
+                    chatId: message.Chat.Id,
+                    text: "Рецепты:",
+                    cancellationToken: cancellationToken);
+        
+                await botClient.SendTextMessageAsync(
+                    chatId: message.Chat.Id,
+                    text: message.Text,
+                    replyMarkup: new InlineKeyboardMarkup(buttons),
+                    cancellationToken: cancellationToken);
+            }
+            else
+            {
+                await botClient.EditMessageReplyMarkupAsync(message.Chat.Id,
+                    message.MessageId,
+                    replyMarkup: new InlineKeyboardMarkup(buttons),
+                    cancellationToken: cancellationToken);
+            }
+        }
+        catch (Exception e)
+        {
+            await botClient.SendTextMessageAsync(
+                chatId: message.Chat.Id,
+                text: "Ингредиент не найден",
+                cancellationToken: cancellationToken);
+        }
+    }
+    
+    /// <summary>
+    /// Отправляет список рецептов с заданной категорией
+    /// В виде интерактивной InlineKeyboard
+    /// </summary>
+    /// <param name="offset">Сколько рецептов пропустить</param>
+    /// <param name="cat">Категория из meal_db</param>
+    async Task SendRecipesByCategory(Message message, ITelegramBotClient botClient,
+        CancellationToken cancellationToken, int offset=0, string cat="")
+    {
+        if (message.Text is null || message.From is null) return;
+        
+        _userStates[message.From.Id] = InputStates.Idle;
+        
+        var buttons = new List<InlineKeyboardButton[]>();
+
+        try
+        {
+            var meals = await MealDBApi.GetRecipesByCategory(cat.Replace("\n", ""), offset);
+
+            foreach (var meal in meals)
+            {
+                string name = await Translator.Translate(meal.strMeal, "en", "ru");
+                int id = meal.idMeal;
+            
+                buttons.Add(new []{InlineKeyboardButton.WithCallbackData(name, id.ToString())});
+            }
+        
+            buttons.Add(new []
+            {
+                InlineKeyboardButton.WithCallbackData("<--", $"cat_{cat}_{Math.Max(offset-5, 0)}"),
+                InlineKeyboardButton.WithCallbackData("-->", $"cat_{cat}_{Math.Max(offset+5, 0)}")
+            });
+
+            if (message.ReplyMarkup is null)
+            {
+                await botClient.SendTextMessageAsync(
+                    chatId: message.Chat.Id,
+                    text: "Рецепты:",
+                    replyMarkup: new InlineKeyboardMarkup(buttons),
+                    cancellationToken: cancellationToken);
+            }
+            else
+            {
+                await botClient.EditMessageReplyMarkupAsync(message.Chat.Id,
+                    message.MessageId,
+                    replyMarkup: new InlineKeyboardMarkup(buttons),
+                    cancellationToken: cancellationToken);
+            }
+        }
+        catch (Exception e)
+        {
+            await botClient.SendTextMessageAsync(
+                chatId: message.Chat.Id,
+                text: "Рецепт не найден",
+                cancellationToken: cancellationToken);
+        }
     }
     
     /// <summary>
