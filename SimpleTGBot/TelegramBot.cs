@@ -111,7 +111,34 @@ public class TelegramBot
     {
         try
         {
+            if (callback is null) return;
+            if (callback.Message is null) return;
+
+            if (callback.Data is not { } callbackData) return;
+
+            await botClient.AnswerCallbackQueryAsync(callback.Id, cancellationToken: cancellationToken);
                 
+            switch (callbackData)
+            {
+                case "random_recipe":
+                    await SendRandomRecipe(callback, botClient, cancellationToken);
+                    return;
+                case "word_recipes":
+                    await SendRecipeWordRequest(callback, botClient, cancellationToken);
+                    return;
+                case "ingredient_recipes":
+                    await SendRecipeIngredientRequest(callback, botClient, cancellationToken);
+                    return;
+                case "cat_recipes":
+                    await SendCategories(callback, botClient, cancellationToken);
+                    return;
+            }
+
+            if (int.TryParse(callbackData, out var id))
+            {
+                await SendRecipeById(callback, botClient, cancellationToken, id);
+                return;
+            }
         }
         catch (Exception e)
         {
@@ -143,6 +170,41 @@ public class TelegramBot
             replyMarkup: keyboard,
             cancellationToken: cancellationToken);
     }
+    
+    /// <summary>
+    /// Отправляет запрос пользователю на ввод слова из названия блюда
+    /// Сохраняет этот запрос в состояние
+    /// </summary>
+    async Task SendRecipeWordRequest(CallbackQuery callbackQuery, ITelegramBotClient botClient, CancellationToken cancellationToken)
+    {
+        var userId = callbackQuery.From.Id;
+        var chatId = callbackQuery.Message.Chat.Id;
+
+        _userStates[userId] = InputStates.WaitForWord;
+        
+        await botClient.SendTextMessageAsync(
+            chatId: chatId,
+            text: "Отправьте первое слово в названии блюда",
+            cancellationToken: cancellationToken);
+    }
+    
+    /// <summary>
+    /// Отправляет запрос пользователю на ввод ингредиента
+    /// Сохраняет этот запрос в состояние
+    /// </summary>
+    async Task SendRecipeIngredientRequest(CallbackQuery callbackQuery, ITelegramBotClient botClient, CancellationToken cancellationToken)
+    {
+        var userId = callbackQuery.From.Id;
+        var chatId = callbackQuery.Message.Chat.Id;
+
+        _userStates[userId] = InputStates.WaitForIngredient;
+        
+        await botClient.SendTextMessageAsync(
+            chatId: chatId,
+            text: "Отправьте главный ингредиент",
+            cancellationToken: cancellationToken);
+    }
+
     
     /// <summary>
     /// Отправляет рецепт с нужным id
@@ -194,6 +256,39 @@ public class TelegramBot
             text: $"<b>Ингредиенты</b>\n\n" + ingredients,
             parseMode: ParseMode.Html,
             cancellationToken: cancellationToken);
+    }
+    
+    /// <summary>
+    /// Отправляет категории рецептов
+    /// </summary>
+    async Task SendCategories(CallbackQuery callbackQuery, ITelegramBotClient botClient, 
+        CancellationToken cancellationToken)
+    {
+        var buttons = new List<InlineKeyboardButton[]>();
+
+        try
+        {
+            var meals = await MealDBApi.GetCategories();
+
+            for (int i = 0; i < meals.Length; i++)
+            {
+                string name = await Translator.Translate(meals[i].strCategory, "en", "ru");
+                if (name.Replace("\n", "").Trim().ToLower() == "сторона") name = "Закуски";
+                
+                buttons.Add(new []{InlineKeyboardButton.WithCallbackData(name, 
+                    $"cat_{meals[i].strCategory}_{0}")});
+            }
+        
+            await botClient.SendTextMessageAsync(
+                chatId: callbackQuery.Message.Chat.Id,
+                text: "Категории:",
+                replyMarkup: new InlineKeyboardMarkup(buttons),
+                cancellationToken: cancellationToken);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
     }
 
     /// <summary>
