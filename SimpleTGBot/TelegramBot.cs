@@ -1,4 +1,4 @@
-﻿using System.Reflection.Metadata.Ecma335;
+﻿using Telegram.Bot.Types.ReplyMarkups;
 
 namespace SimpleTGBot;
 using Telegram.Bot;
@@ -7,19 +7,24 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
+enum InputStates {
+    Idle,
+    WaitForWord,
+    WaitForIngredient
+}
+
 public class TelegramBot
 {
-    // Токен TG-бота. Можно получить у @BotFather
-    private const string BotToken = "ВАШ_ТОКЕН_ИДЕНТИФИКАЦИИ_БОТА";
+    private const string BotToken = "8617299209:AAHSeEF3gqrRz-xDAGHbZ8KlepNex-2ollw";
+
+    private Dictionary<long, InputStates> _userStates;
     
     /// <summary>
     /// Инициализирует и обеспечивает работу бота до нажатия клавиши Esc
     /// </summary>
     public async Task Run()
     {
-        // Если вам нужно хранить какие-то данные во время работы бота (массив информации, логи бота,
-        // историю сообщений для каждого пользователя), то это всё надо инициализировать в этом методе.
-        // TODO: Инициализация необходимых полей
+        _userStates = new Dictionary<long, InputStates>();   
         
         // Инициализируем наш клиент, передавая ему токен.
         var botClient = new TelegramBotClient(BotToken);
@@ -31,7 +36,7 @@ public class TelegramBot
         // Будем получать только сообщения. При желании можно поработать с другими событиями.
         ReceiverOptions receiverOptions = new ReceiverOptions()
         {
-            AllowedUpdates = new [] { UpdateType.Message }
+            AllowedUpdates = new [] { UpdateType.Message, UpdateType.CallbackQuery }
         };
 
         // Привязываем все обработчики и начинаем принимать сообщения для бота
@@ -61,34 +66,81 @@ public class TelegramBot
     /// <param name="cancellationToken">Служебный токен для работы с многопоточностью</param>
     async Task OnMessageReceived(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
-        // Работаем только с сообщениями. Остальные события игнорируем
+        Console.WriteLine(update.Type);
+        
+        if (update.Type == UpdateType.CallbackQuery)
+        {
+            await HandleCallback(update.CallbackQuery, botClient, cancellationToken);
+        }
+        
         var message = update.Message;
         if (message is null)
         {
             return;
         }
-        // Будем обрабатывать только текстовые сообщения.
-        // При желании можно обрабатывать стикеры, фото, голосовые и т. д.
-        //
-        // Обратите внимание на использованную конструкцию. Она эквивалентна проверке на null, приведённой выше.
-        // Подробнее об этом синтаксисе: https://medium.com/@mattkenefick/snippets-in-c-more-ways-to-check-for-null-4eb735594c09
+
         if (message.Text is not { } messageText)
         {
             return;
         }
-
-        // Получаем ID чата, в которое пришло сообщение. Полезно, чтобы отличать пользователей друг от друга.
+        
         var chatId = message.Chat.Id;
-        
-        // Печатаем на консоль факт получения сообщения
-        Console.WriteLine($"Получено сообщение в чате {chatId}: '{messageText}'");
+        var userId = message.From?.Id ?? chatId;
 
-        // TODO: Обработка пришедших сообщений
-        
-        // Отправляем обратно то же сообщение, что и получили
-        Message sentMessage = await botClient.SendTextMessageAsync(
+        if (messageText == "/start" || messageText == "/menu")
+        {
+            try
+            {
+                await SendMenu(chatId, botClient, cancellationToken);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Обрабатывает коллбеки от клавиатуры
+    /// </summary>
+    /// <param name="callback"></param>
+    /// <param name="botClient"></param>
+    /// <param name="cancellationToken"></param>
+    async Task HandleCallback(CallbackQuery? callback, ITelegramBotClient botClient,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+                
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+    }
+
+    /// <summary>
+    /// Отправляет меню с действиями
+    /// </summary>
+    async Task SendMenu(long chatId, ITelegramBotClient botClient, CancellationToken cancellationToken)
+    {
+        var keyboard = new InlineKeyboardMarkup(new[]
+        {
+            new [] {InlineKeyboardButton.WithCallbackData("Случайное блюдо", 
+                "random_recipe")},
+            new [] {InlineKeyboardButton.WithCallbackData("Блюдо по первому слову", 
+                "word_recipes")},
+            new [] {InlineKeyboardButton.WithCallbackData("Блюдо по вашему ингредиенту", 
+                "ingredient_recipes")},
+            new [] {InlineKeyboardButton.WithCallbackData("Блюда по категориям", 
+                "cat_recipes")}
+        });
+            
+        await botClient.SendTextMessageAsync(
             chatId: chatId,
-            text: "Ты написал:\n" + messageText,
+            text: "Здесь вы найдёте рецепты еды на любой вкус и с любыми ингридиентами"
+                  + "\n\nВыберите пункт меню:",
+            replyMarkup: keyboard,
             cancellationToken: cancellationToken);
     }
 
