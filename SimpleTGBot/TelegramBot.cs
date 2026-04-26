@@ -242,13 +242,14 @@ public class TelegramBot
             {
                 await botClient.SendTextMessageAsync(
                     chatId: message.Chat.Id,
-                    text: "Рецепты:",
+                    text: "Рецепты:\t\t",
                     cancellationToken: cancellationToken);
         
                 await botClient.SendTextMessageAsync(
                     chatId: message.Chat.Id,
-                    text: message.Text,
+                    text: message.Text + "                      &#x200D;",
                     replyMarkup: new InlineKeyboardMarkup(buttons),
+                    parseMode: ParseMode.Html,
                     cancellationToken: cancellationToken);
             }
             else
@@ -313,8 +314,9 @@ public class TelegramBot
         
                 await botClient.SendTextMessageAsync(
                     chatId: message.Chat.Id,
-                    text: message.Text,
+                    text: message.Text + "                      &#x200D;",
                     replyMarkup: new InlineKeyboardMarkup(buttons),
+                    parseMode: ParseMode.Html,
                     cancellationToken: cancellationToken);
             }
             else
@@ -502,7 +504,8 @@ public class TelegramBot
         
             await botClient.SendTextMessageAsync(
                 chatId: callbackQuery.Message.Chat.Id,
-                text: "Категории:",
+                text: "Категории:          &#x200D;",
+                parseMode: ParseMode.Html,
                 replyMarkup: new InlineKeyboardMarkup(buttons),
                 cancellationToken: cancellationToken);
         }
